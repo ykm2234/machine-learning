@@ -1,0 +1,73 @@
+---
+title: "prediction project"
+author: "Yogesh"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+We use the exercise dataset to predict how well subjects are performing an exercise. We split the training data into a training set and a validation set. We train predictors using two methods: linear discriminant analysis (LDA) and classification trees. We find that the linear discriminant analysis has the higher accuracy of these two on both the training set and validation set. We then apply the LDA model to the test data to make our predictions.
+
+## Data cleaning
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+We load the data, putting an `NA` for missing or `#DIV/0!` values:
+```{r message=FALSE, cache=TRUE}
+trainfile<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+traindata<-read.csv(trainfile, na.strings=c('#DIV/0!', '', 'NA'))
+testfile<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testdata<-read.csv(testfile, na.strings=c('#DIV/0!', '', 'NA'))
+```
+
+We then throw out the values in the training data that are `NA`s, as well as the first 7 columns (because these do not involve exercise data).
+```{r cache=TRUE}
+v=vector()  ## vector of column numbers with complete data, i.e. zero NA's
+for(i in 1:length(traindata)){
+  if(sum(is.na(traindata[,i]))==0) v<-c(v, i)
+}
+traindata<-subset(traindata, select=v) ## select columns with complete data
+traindata<-subset(traindata, select=-(1:7)) ## throw out first 7 columns
+```
+
+We then split the training data into a training set and a validation set.
+```{r echo=FALSE, message=FALSE}
+library(caret)
+```
+
+```{r cache=TRUE}
+inTrain<-createDataPartition(traindata$classe, p=0.8, list=FALSE)
+training_set<-traindata[inTrain,]
+validation_set<-traindata[-inTrain,]
+```
+
+## Model Building
+Because our prediction problem is a classification problem (classify `classe` as `A, B, C, D, E') we build models using three classification algorithms introduced in class: linear discriminant analysis (`method="lda"`), classification trees (`method=rpart') and random forests (`method=rf`). Unfortunately, the random forest method takes too long to run for our large dataset, so we omit it here.
+```{r cache=TRUE, message=FALSE}
+ctrl<-trainControl(method="repeatedcv", repeats=3)
+mod_lda<-train(classe~., data=training_set, method="lda", trControl=ctrl, preProc=c("center", "scale"))
+mod_rpart<-train(classe~., data=training_set, method="rpart", trControl=ctrl, preProc=c("center", "scale"))
+```
+
+## Model Selection
+The LDA model `mod_lda` has 70% accuracy on the training set, while the classification tree model `mod_rpart` has 51% accuracy on the training set. 
+```{r}
+mod_lda
+mod_rpart
+```
+
+### Cross validation
+When then use the validation set to select between the two models. Not surprisingly, the LDA model performs better on the validation set (as it performed much better on the training set as well). The accuracy for both models on the validation set is slighly less than accuracy on the training set (as expected): 70.3% vs 69.8% for the LDA model, and 50.8% vs 49.3% for classification tree model. So we choose the LDA model to run once on the test set. The expected out of sample error is 100 - 69.8 = 30.2 % (since the validation set is out of sample).
+```{r cache=TRUE}
+confusionMatrix(predict(mod_lda, validation_set),validation_set$classe)
+confusionMatrix(predict(mod_rpart, validation_set),validation_set$classe)
+```
+
+
+### Testing set
+Finally, we run the LDA model on our test data to make our predictions:
+
+```{r cache=TRUE}
+predict(mod_lda, testdata)
+```
